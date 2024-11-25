@@ -75,11 +75,23 @@ class MultiModalData(Dataset):
             images = torch.cat((images, padding), dim=0)
             price_list += [-1] * (8 - max_length)
             likes_list += [-1] * (8 - max_length)
-
+        
+        
+        L, D = texts.shape
+        print(L)
+        assert(L == 8)
+        
         question = []
         gt_idx = random.randint(0, max_length-1)
+        
+        texts_sliced = torch.cat((texts[ : gt_idx, :] , texts[ gt_idx+1:, :]), dim=0)
+        images_sliced = torch.cat((images[ : gt_idx, :] , images[ gt_idx+1:, :]), dim=0)
+        
+        text_gt = texts[gt_idx, :]
+        image_gt = images[gt_idx, :]
         prices = torch.tensor(price_list)
         likes = torch.tensor(likes_list)
+        
         if self.mode == 'test' and self.question is not None:
             filtered_question = self.question[self.question['set_id'] == set_id]
             for _, row in filtered_question.iterrows():
@@ -91,10 +103,12 @@ class MultiModalData(Dataset):
                 question.append(question_data)
             
             return {
-                'texts': texts,
+                'texts': texts_sliced,
+                'text_gt': text_gt,
                 'prices': prices,
                 'likes': likes,
-                'images': images, 
+                'images': images_sliced, 
+                'image_gt': image_gt,
                 'set_id': set_id, 
                 'question': question,
                 'valid_idx' : max_length-1,
@@ -102,10 +116,12 @@ class MultiModalData(Dataset):
             }
         
         return {
-            'texts': texts,
+            'texts': texts_sliced,
+            'text_gt': text_gt,
             'prices': prices,
             'likes': likes,
-            'images': images, 
+            'images': images_sliced, 
+            'image_gt': image_gt,
             'set_id': set_id,
             'valid_idx': max_length-1,
             'gt_idx' : gt_idx
