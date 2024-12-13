@@ -5,10 +5,11 @@ class DataSampler:
     """
     Arguements: ~
     """
-    def __init__(self, data_path, k=100, train_sampling_ratio=1.0, test_sampling_ratio = 0.33):
+    def __init__(self, data_path, k=100, train_sampling_ratio=1.0, valid_sampling_ratio=0.1,test_sampling_ratio = 0.33):
         self.data_path = data_path
         self.k = k
         self.train_sampling_ratio = train_sampling_ratio
+        self.valid_sampling_ratio = valid_sampling_ratio
         self.test_sampling_ratio = test_sampling_ratio
         self.train = pd.read_json(os.path.join(self.data_path, 'train_no_dup.json'))
         self.valid = pd.read_json(os.path.join(self.data_path, 'valid_no_dup.json'))
@@ -16,6 +17,7 @@ class DataSampler:
         self.question = pd.read_json(os.path.join(self.data_path, 'fill_in_blank_test.json'))
         self.category_df = self._load_category_data(os.path.join(self.data_path, 'category_id.txt'))
 
+        
     def _load_category_data(self, category_path):
         category = []
         with open(category_path, 'r') as file:
@@ -63,6 +65,7 @@ class DataSampler:
         #self.test = self._filter_data(self.test)
 
         self.train = self.train.sample(frac=self.train_sampling_ratio, random_state=42)
+        self.valid = self.valid.sample(frac=self.valid_sampling_ratio, random_state=42)
         self.test = self.test.sample(frac=self.test_sampling_ratio, random_state=42)
         self.train['type'] = 'train'
         self.valid['type'] = 'valid'

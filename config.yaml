@@ -1,0 +1,23 @@
+model:
+  name: "MLP"
+  save_dir: "transformer_epoc10_withoutnorm.pth"
+
+training:
+  learning_rate: 0.001
+  epochs: 20
+  batch_size: 16
+  shuffle: true
+  optimizer: "Adam"
+  loss: "CosineSimilarity"
+
+dataset:
+  train: 'data/meta/train_no_dup.json'
+  valid: 'data/meta/valid_no_dup.json'
+  test:  'data/meta/test_no_dup.json'
+  blank: 'data/meta/fill_in_blank_test.json'
+  data_dir: 'data'
+  meta_dir: 'data/meta'
+  image_dir: 'data/images'
+  train_sampling_ratio: 1.0
+  valid_sampling_ratio: 0.05
+  test_sampling_ratio: 0.33

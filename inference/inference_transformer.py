@@ -1,11 +1,16 @@
+from model.transfusion import TransFusion
+from model.transfusion import Encoder
+from model.transfusion import Decoder
+
 import torch
-from model.multifusion import Multifusion  # Multifusion 모델 임포트
+
 import pandas as pd
 import os
 from dataloader.sampling import DataSampler
 from dataloader.multimodal_data import MultiModalData
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
+from torch.utils.data.dataloader import default_collate
 path = 'data/meta/'
 test = pd.read_json(path + 'test_no_dup.json')
 blank = pd.read_json(path + 'fill_in_blank_test.json')
@@ -17,15 +22,71 @@ sampler = DataSampler(data_path = meta_dir,  test_sampling_ratio=1.0)
 concat_df, question_data = sampler.sample_data()
 test_dataset = MultiModalData(concat_df, sampler.category_df, image_dir, question = question_data, mode='test')
 
+
+def custom_collate_fn(batch):
+    batch = [item for item in batch if item is not None]  # None 값 필터링
+    if len(batch) == 0:
+        return None
+    return {
+        'images': default_collate([item['images'] for item in batch]),
+        'texts': default_collate([item['texts'] for item in batch]),
+        'question': default_collate([item['question'] for item in batch])
+    }
     
-test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=1, collate_fn=custom_collate_fn, shuffle=False)
 # 1. 모델 초기화
 device = "cuda" if torch.cuda.is_available() else "cpu"
-net = Multifusion().to(device)
+
+
+INPUT_DIM = None
+OUTPUT_DIM = None
+HID_DIM = 512
+ENC_LAYERS = 3
+DEC_LAYERS = 3
+ENC_HEADS = 8
+DEC_HEADS = 8
+ENC_PF_DIM = 512
+DEC_PF_DIM = 512
+ENC_DROPOUT = 0.1
+DEC_DROPOUT = 0.1
+
+
+enc = Encoder(INPUT_DIM,
+                HID_DIM,
+                ENC_LAYERS,
+                ENC_HEADS,
+                ENC_PF_DIM,
+                ENC_DROPOUT,
+                device)
+
+dec_img = Decoder(OUTPUT_DIM,
+              HID_DIM,
+              DEC_LAYERS,
+              DEC_HEADS,
+              DEC_PF_DIM,
+              DEC_DROPOUT,
+              device)
+dec_txt = Decoder(OUTPUT_DIM,
+              HID_DIM,
+              DEC_LAYERS,
+              DEC_HEADS,
+              DEC_PF_DIM,
+              DEC_DROPOUT,
+              device)
+
+SRC_PAD_IDX = -1
+TRG_PAD_IDX = -1
+model_TransFusion = TransFusion(enc, dec_img, dec_txt, SRC_PAD_IDX, TRG_PAD_IDX, device).to(device)
+
+
+net = model_TransFusion.to(device)
+
+
+
 
 # 2. 모델 파라미터 로드
-checkpoint = "multifusion_model_epoch50.pth"
-net.load_state_dict(torch.load(checkpoint, map_location=device))
+checkpoint = "transformer_epoc20_withoutnorm.pth"
+net.load_state_dict(torch.load(checkpoint, map_location=device), strict=False)
 net.eval()  # 모델을 추론 모드로 전환
 print("Model loaded and set to eval mode.")
 
@@ -78,6 +139,10 @@ set_id_dict = test_dataset.set_id_search_dict # answer의 임베딩을 역으로
 
 correct = 0
 total = 0
+
+
+
+
 with torch.no_grad():  # 학습이 아니라 추론이므로 gradient 계산 비활성화
     for batch_idx, batch in enumerate(test_loader):
         # batch에서 texts와 images 가져오기
@@ -88,8 +153,10 @@ with torch.no_grad():  # 학습이 아니라 추론이므로 gradient 계산 비
         texts, images = pick_questions(texts, images, blank_idx)
         
         # 모델 추론
-        output = net(images, texts)
+        out_images, out_texts = net.inference(model_TransFusion, images, texts, max_len=9)
         
+        output = torch.cat((out_images, out_texts), dim=1)
+        #print("output shape is: ",output.shape)
         # answer 뽑기
         model_answer = pick_proper_answer(output, answer_sheet, set_id_dict)
 

@@ -25,10 +25,23 @@ class MultiModalData(Dataset):
         return torch.cat(processed_images, dim=0)
     
     def __len__(self):
-        return len(self.data_df)
+        if self.mode == 'train' or self.mode == 'valid':
+            return len(self.data_df) 
+        elif self.mode == 'test':
+            return len(self.data_df)
 
     def __getitem__(self, idx):
-        data_row = self.data_df.iloc[idx]
+        if self.mode == 'train' or self.mode == 'valid':
+            # original_idx = idx // 8
+            # gt_idx = idx % 8
+            original_idx = idx 
+            gt_idx = 0
+        elif self.mode == 'test':
+            original_idx = idx 
+            gt_idx = None
+        
+        
+        data_row = self.data_df.iloc[original_idx]
         set_id = data_row['set_id']
         text_list = []
         price_list = []
@@ -63,10 +76,10 @@ class MultiModalData(Dataset):
         text_list = text_list[:max_length]  
         images = images[:max_length]
         
-        text_input = clip.tokenize(text_list).to(self.device)
-        texts = self.model.encode_text(text_input)
-        image_tensor = self.preprocess_images(images).to(self.device)
-        images = self.model.encode_image(image_tensor)
+        text_input = clip.tokenize(text_list).to(self.device)  
+        texts = self.model.encode_text(text_input).detach()
+        image_tensor = self.preprocess_images(images).to(self.device)  
+        images = self.model.encode_image(image_tensor).detach()
         
         # 길이 부족시 padding 채움
         # 일단 패딩이 추가된다고 하면, max_length idx부터 추가가 됨.
@@ -77,22 +90,42 @@ class MultiModalData(Dataset):
             price_list += [-1] * (8 - max_length)
             likes_list += [-1] * (8 - max_length)
         
+        prices = torch.tensor(price_list)
+        likes = torch.tensor(likes_list)
+        
         
         L, D = texts.shape
 
         assert(L == 8)
         
         question = []
-        gt_idx = random.randint(0, max_length-1)
-        if self.mode == 'train':
+        #gt_idx = random.randint(0, max_length-1)
+        
+        if self.mode == 'train' or self.mode == 'valid':
             texts_sliced = torch.cat((texts[ : gt_idx, :] , texts[ gt_idx+1:, :]), dim=0)
             images_sliced = torch.cat((images[ : gt_idx, :] , images[ gt_idx+1:, :]), dim=0)
             text_gt = texts[gt_idx, :]
             image_gt = images[gt_idx, :]
             
-        prices = torch.tensor(price_list)
-        likes = torch.tensor(likes_list)
-        
+            # if gt_idx > max_length:
+            #     return None
+            
+            
+            return {
+            'texts': texts_sliced.float(),
+            'text_gt': text_gt.float(),
+            'texts_full': texts.float(),
+            # 'prices': prices,
+            # 'likes': likes,
+            'images': images_sliced.float(), 
+            'image_gt': image_gt.float(),
+            'images_full': images.float(),
+            'set_id': set_id,
+            'valid_idx': max_length-1,
+            'gt_idx' : gt_idx
+            }
+         
+            
         if self.mode == 'test' and self.question is not None:
             filtered_question = self.question[self.question['set_id'] == set_id]
             question_data ={}
@@ -109,8 +142,8 @@ class MultiModalData(Dataset):
             
             return {
                 'texts': texts.float(),
-                'prices': prices,
-                'likes': likes,
+                # 'prices': prices,
+                # 'likes': likes,
                 'images': images.float(), 
                 'set_id': set_id, 
                 'question': question_data,
@@ -118,16 +151,6 @@ class MultiModalData(Dataset):
                 'gt_idx' : gt_idx #for gt select and train
             }
         
-        return {
-            'texts': texts_sliced.float(),
-            'text_gt': text_gt.float(),
-            'prices': prices,
-            'likes': likes,
-            'images': images_sliced.float(), 
-            'image_gt': image_gt.float(),
-            'set_id': set_id,
-            'valid_idx': max_length-1,
-            'gt_idx' : gt_idx
-        }
+        
 
 
